@@ -6,3 +6,4 @@ pathlib
 googletrans
 fpdf
 io
+re
