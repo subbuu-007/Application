@@ -5,6 +5,3 @@ python-dotenv
 pathlib
 googletrans
 fpdf
-pip upgrade pip
-
-Re
