@@ -3,3 +3,4 @@ streamlit
 google_generativeai
 python-dotenv
 pathlib
+googletrans
