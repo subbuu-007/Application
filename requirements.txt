@@ -4,3 +4,4 @@ google_generativeai
 python-dotenv
 pathlib
 googletrans
+fpdf
