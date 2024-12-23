@@ -27,7 +27,7 @@ Please provide the summary of the text given here:
 # Function to extract video ID from URL
 def extract_video_id(youtube_url):
     try:
-        pattern = r"(?:v=|youtu\.be/|embed/|v/|watch\?v=|shorts/|e/|^)([A-Za-z0-9_-]{11})"
+        pattern = r"(?:v=|youtu\\.be/|embed/|v/|watch\\?v=|shorts/|e/|^)([A-Za-z0-9_-]{11})"
         match = re.search(pattern, youtube_url)
         if match:
             return match.group(1)
@@ -129,7 +129,8 @@ summary_format = st.radio(
 # Adjust the prompt based on input size and format
 summary_prompt = base_prompt.format(summary_format=summary_format) + f" in {summary_size} words:"
 
-# Display video thumbnail if valid
+# Extract video ID and display thumbnail
+video_id = None
 if youtube_link:
     video_id = extract_video_id(youtube_link)
     if video_id:
@@ -140,54 +141,62 @@ if youtube_link:
 
 # Button to generate summary
 if st.button("Generate Summary"):
-    if video_id:
-        transcript_text = extract_transcript_details(video_id)
-        if transcript_text:
-            # Translate transcript if video language is not English
-            if video_language != "English":
-                transcript_text = translate_text(transcript_text, src_lang=video_language.lower(), dest_lang="en")
-                if not transcript_text:
-                    st.error("Failed to translate transcript.")
-                    st.stop()
+    if not youtube_link:
+        st.error("Please enter a YouTube link.")
+        st.stop()
 
-            # Generate summary in English
-            summary = generate_genmini_content(transcript_text, summary_prompt)
-            if summary:
-                # Translate summary to the desired language
-                if summary_language != "English":
-                    summary = translate_text(summary, src_lang="en", dest_lang=summary_language.lower())
-                    if not summary:
-                        st.error("Failed to translate summary.")
-                        st.stop()
+    if not video_id:
+        st.error("Invalid YouTube URL. Please enter a valid link.")
+        st.stop()
 
-                st.subheader(f"Video Summary ({summary_format}) - {summary_language}")
-                st.write(summary)
+    transcript_text = extract_transcript_details(video_id)
+    if not transcript_text:
+        st.error("Failed to extract transcript. Ensure the video supports captions.")
+        st.stop()
 
-                # Provide download options
-                col1, col2 = st.columns(2)
-                with col1:
-                    # Download as TXT
-                    txt_data = BytesIO()
-                    txt_data.write(summary.encode("utf-8"))
-                    txt_data.seek(0)
-                    st.download_button(
-                        label="Download as TXT",
-                        data=txt_data,
-                        file_name=f"summary_{summary_format.lower()}.txt",
-                        mime="text/plain"
-                    )
-                with col2:
-                    # Download as PDF
-                    pdf_data = BytesIO(generate_pdf(summary))
-                    st.download_button(
-                        label="Download as PDF",
-                        data=pdf_data,
-                        file_name=f"summary_{summary_format.lower()}.pdf",
-                        mime="application/pdf"
-                    )
-            else:
-                st.error("Failed to generate summary. Please try again.")
-        else:
-            st.error("Failed to extract transcript. Ensure the video supports captions.")
-    else:
-        st.error("Invalid YouTube URL. Please enter a valid link.") 
+    # Translate transcript if video language is not English
+    if video_language != "English":
+        transcript_text = translate_text(transcript_text, src_lang=video_language.lower(), dest_lang="en")
+        if not transcript_text:
+            st.error("Failed to translate transcript.")
+            st.stop()
+
+    # Generate summary in English
+    summary = generate_genmini_content(transcript_text, summary_prompt)
+    if not summary:
+        st.error("Failed to generate summary. Please try again.")
+        st.stop()
+
+    # Translate summary to the desired language
+    if summary_language != "English":
+        summary = translate_text(summary, src_lang="en", dest_lang=summary_language.lower())
+        if not summary:
+            st.error("Failed to translate summary.")
+            st.stop()
+
+    # Display summary
+    st.subheader(f"Video Summary ({summary_format}) - {summary_language}")
+    st.write(summary)
+
+    # Provide download options
+    col1, col2 = st.columns(2)
+    with col1:
+        # Download as TXT
+        txt_data = BytesIO()
+        txt_data.write(summary.encode("utf-8"))
+        txt_data.seek(0)
+        st.download_button(
+            label="Download as TXT",
+            data=txt_data,
+            file_name=f"summary_{summary_format.lower()}.txt",
+            mime="text/plain"
+        )
+    with col2:
+        # Download as PDF
+        pdf_data = BytesIO(generate_pdf(summary))
+        st.download_button(
+            label="Download as PDF",
+            data=pdf_data,
+            file_name=f"summary_{summary_format.lower()}.pdf",
+            mime="application/pdf"
+        )
