@@ -9,6 +9,7 @@ import re
 from io import BytesIO
 from fpdf import FPDF
 from pytube import YouTube
+import whisper
 
 # Load environment variables
 load_dotenv()
@@ -62,6 +63,16 @@ def download_audio(youtube_url):
         return audio_path
     except Exception as e:
         st.error(f"Error downloading audio: {e}")
+        return None
+
+# Function to process audio and generate transcript using Whisper
+def process_audio_with_whisper(audio_path):
+    try:
+        model = whisper.load_model("base")
+        result = model.transcribe(audio_path)
+        return result.get("text", "")
+    except Exception as e:
+        st.error(f"Error processing audio with Whisper: {e}")
         return None
 
 # Function to translate text
@@ -172,9 +183,12 @@ if st.button("Generate Summary"):
         if not audio_path:
             st.error("Failed to download audio. Please try another video.")
             st.stop()
-        # Process audio through a speech-to-text API (to be implemented)
-        st.error("Audio processing not yet implemented.")
-        st.stop()
+
+        # Process audio through Whisper
+        transcript_text = process_audio_with_whisper(audio_path)
+        if not transcript_text:
+            st.error("Failed to process audio. Please try again later.")
+            st.stop()
 
     # Translate transcript if video language is not English
     if video_language != "English":
