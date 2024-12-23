@@ -27,6 +27,17 @@ the video as per the selected format. Format: {summary_format}.
 Please provide the summary of the text given here:
 """
 
+# Language code mapping
+LANGUAGE_CODES = {
+    "English": "en",
+    "Kannada": "kn",
+    "Hindi": "hi",
+    "Telugu": "te",
+    "Tamil": "ta",
+    "Malayalam": "ml",
+    "Other": None  # Handle 'Other' separately if needed
+}
+
 # Function to extract video ID from URL
 def extract_video_id(youtube_url):
     try:
@@ -65,7 +76,7 @@ def download_audio(youtube_url):
         st.error(f"Error downloading audio: {e}")
         return None
 
-# Function to process audio and generate transcript using Whisper (local model)
+# Function to process audio and generate transcript using Whisper
 def process_audio_with_whisper(audio_path):
     try:
         model = whisper.load_model("base")  # You can change to "small", "medium", etc. for better accuracy
@@ -79,7 +90,16 @@ def process_audio_with_whisper(audio_path):
 # Function to translate text
 def translate_text(text, src_lang, dest_lang="en"):
     try:
-        translation = translator.translate(text, src=src_lang, dest=dest_lang)
+        if not text or not text.strip():
+            st.error("Cannot translate empty or invalid text.")
+            return None
+
+        src_lang_code = LANGUAGE_CODES.get(src_lang, None)
+        if not src_lang_code:
+            st.error(f"Unsupported source language: {src_lang}")
+            return None
+
+        translation = translator.translate(text, src=src_lang_code, dest=dest_lang)
         return translation.text
     except Exception as e:
         st.error(f"Error translating text: {e}")
@@ -194,7 +214,7 @@ if st.button("Generate Summary"):
 
     # Translate transcript if video language is not English
     if video_language != "English":
-        transcript_text = translate_text(transcript_text, src_lang=video_language.lower(), dest_lang="en")
+        transcript_text = translate_text(transcript_text, src_lang=video_language, dest_lang="en")
         if not transcript_text:
             st.error("Failed to translate transcript.")
             st.stop()
