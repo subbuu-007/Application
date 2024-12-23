@@ -48,7 +48,7 @@ def extract_transcript_details(video_id):
         transcript = " ".join([entry["text"] for entry in transcript_data])
         return transcript
     except CouldNotRetrieveTranscript as e:
-        st.error(f"Could not retrieve a transcript for this video. Ensure captions are enabled. {str(e)}")
+        st.warning(f"Could not retrieve a transcript for this video. Attempting to download audio... {str(e)}")
         return None
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}")
@@ -59,18 +59,19 @@ def download_audio(youtube_url):
     try:
         yt = YouTube(youtube_url)
         stream = yt.streams.filter(only_audio=True).first()
-        audio_path = stream.download()
+        audio_path = stream.download(filename="video_audio.mp4")
         return audio_path
     except Exception as e:
         st.error(f"Error downloading audio: {e}")
         return None
 
-# Function to process audio and generate transcript using Whisper
+# Function to process audio and generate transcript using Whisper (local model)
 def process_audio_with_whisper(audio_path):
     try:
-        model = whisper.load_model("base")
-        result = model.transcribe(audio_path)
-        return result.get("text", "")
+        model = whisper.load_model("base")  # You can change to "small", "medium", etc. for better accuracy
+        with st.spinner("Processing audio with Whisper..."):
+            result = model.transcribe(audio_path)
+            return result.get("text", "")
     except Exception as e:
         st.error(f"Error processing audio with Whisper: {e}")
         return None
@@ -176,9 +177,10 @@ if st.button("Generate Summary"):
         st.error("Invalid YouTube URL. Please enter a valid link.")
         st.stop()
 
+    # Extract transcript or process audio if no transcript
     transcript_text = extract_transcript_details(video_id)
     if not transcript_text:
-        st.error("Transcript is unavailable for this video. Attempting to download audio...")
+        st.warning("Transcript not available. Attempting to download and process audio...")
         audio_path = download_audio(youtube_link)
         if not audio_path:
             st.error("Failed to download audio. Please try another video.")
