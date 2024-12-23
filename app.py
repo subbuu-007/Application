@@ -2,11 +2,13 @@ import streamlit as st
 import os
 from dotenv import load_dotenv
 from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api._errors import CouldNotRetrieveTranscript
 import google.generativeai as genai
 from googletrans import Translator
 import re
 from io import BytesIO
 from fpdf import FPDF
+from pytube import YouTube
 
 # Load environment variables
 load_dotenv()
@@ -44,8 +46,22 @@ def extract_transcript_details(video_id):
         transcript_data = YouTubeTranscriptApi.get_transcript(video_id)
         transcript = " ".join([entry["text"] for entry in transcript_data])
         return transcript
+    except CouldNotRetrieveTranscript as e:
+        st.error(f"Could not retrieve a transcript for this video. Ensure captions are enabled. {str(e)}")
+        return None
     except Exception as e:
-        st.error(f"Error fetching transcript: {e}")
+        st.error(f"An unexpected error occurred: {e}")
+        return None
+
+# Function to download audio from YouTube
+def download_audio(youtube_url):
+    try:
+        yt = YouTube(youtube_url)
+        stream = yt.streams.filter(only_audio=True).first()
+        audio_path = stream.download()
+        return audio_path
+    except Exception as e:
+        st.error(f"Error downloading audio: {e}")
         return None
 
 # Function to translate text
@@ -151,7 +167,13 @@ if st.button("Generate Summary"):
 
     transcript_text = extract_transcript_details(video_id)
     if not transcript_text:
-        st.error("Failed to extract transcript. Ensure the video supports captions.")
+        st.error("Transcript is unavailable for this video. Attempting to download audio...")
+        audio_path = download_audio(youtube_link)
+        if not audio_path:
+            st.error("Failed to download audio. Please try another video.")
+            st.stop()
+        # Process audio through a speech-to-text API (to be implemented)
+        st.error("Audio processing not yet implemented.")
         st.stop()
 
     # Translate transcript if video language is not English
