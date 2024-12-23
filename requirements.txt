@@ -7,4 +7,3 @@ googletrans
 fpdf
 pytube
 whisper
-exceptions
