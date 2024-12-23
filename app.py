@@ -2,16 +2,11 @@ import streamlit as st
 import os
 from dotenv import load_dotenv
 from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api._errors import CouldNotRetrieveTranscript
 import google.generativeai as genai
-from googletrans import Translator, LANGUAGES
+from googletrans import Translator
 import re
 from io import BytesIO
 from fpdf import FPDF
-from pytube import YouTube
-import whisper
-from googletrans import exceptions
-
 
 # Load environment variables
 load_dotenv()
@@ -32,7 +27,7 @@ Please provide the summary of the text given here:
 # Function to extract video ID from URL
 def extract_video_id(youtube_url):
     try:
-        pattern = r"(?:v=|youtu\\.be/|embed/|v/|watch\\?v=|shorts/|e/|^)([A-Za-z0-9_-]{11})"
+        pattern = r"(?:v=|youtu\.be/|embed/|v/|watch\?v=|shorts/|e/|^)([A-Za-z0-9_-]{11})"
         match = re.search(pattern, youtube_url)
         if match:
             return match.group(1)
@@ -49,51 +44,21 @@ def extract_transcript_details(video_id):
         transcript_data = YouTubeTranscriptApi.get_transcript(video_id)
         transcript = " ".join([entry["text"] for entry in transcript_data])
         return transcript
-    except CouldNotRetrieveTranscript:
-        st.warning("Could not retrieve a transcript for this video. Attempting to download audio...")
-        return None
     except Exception as e:
-        st.error(f"An unexpected error occurred: {e}")
-        return None
-
-# Function to download audio from YouTube
-def download_audio(youtube_url):
-    try:
-        yt = YouTube(youtube_url)
-        stream = yt.streams.filter(only_audio=True).first()
-        audio_path = stream.download(filename="video_audio.mp4")
-        return audio_path
-    except Exception as e:
-        st.error(f"Error downloading audio: {e}")
-        return None
-
-# Function to process audio and generate transcript using Whisper (local model)
-def process_audio_with_whisper(audio_path):
-    try:
-        model = whisper.load_model("base")
-        with st.spinner("Processing audio with Whisper..."):
-            result = model.transcribe(audio_path)
-            return result.get("text", "")
-    except Exception as e:
-        st.error(f"Error processing audio with Whisper: {e}")
+        st.error(f"Error fetching transcript: {e}")
         return None
 
 # Function to translate text
 def translate_text(text, src_lang, dest_lang="en"):
     try:
-        if src_lang.lower() == dest_lang.lower():
-            return text
         translation = translator.translate(text, src=src_lang, dest=dest_lang)
         return translation.text
-    except exceptions.TranslatorError as e:
+    except Exception as e:
         st.error(f"Error translating text: {e}")
-        return None
-    except Exception:
-        st.error("Unexpected error during translation. Please check the language selection.")
         return None
 
 # Function to generate summary using AI
-def generate_summary(transcript_text, prompt):
+def generate_genmini_content(transcript_text, prompt):
     try:
         model = genai.GenerativeModel("gemini-pro")
         response = model.generate_content(prompt + transcript_text)
@@ -108,21 +73,15 @@ def generate_pdf(summary_text):
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
-    # Adjust font path and ensure it's available
-    font_path = "C:/Users/subha/Pictures/font/ttf/NotoSerif-Regular.ttf"  # Update the path
-    try:
-        pdf.add_font("DejaVu", "", font_path, uni=True)
-    except Exception as e:
-        st.error(f"Error adding font: {e}")
-        pdf.set_font("Arial", size=12)  # Fallback to Arial if custom font fails
-
+    # Add a Unicode font (use a font file that supports Unicode characters)
+    font_path = "C:/Users/subha/Pictures/font/ttf/NotoSerif-Regular.ttf"  # Replace with the path to your font file
+    pdf.add_font("DejaVu", "", font_path, uni=True)
     pdf.set_font("DejaVu", size=12)
 
+    # Add the text
     pdf.multi_cell(0, 10, summary_text)
 
-    # Output PDF to a byte stream
-    pdf_output = pdf.output(dest='S').encode("latin1")
-    return pdf_output
+    return pdf.output(dest="S").encode("latin1")
 
 # Streamlit app
 st.markdown(
@@ -170,8 +129,7 @@ summary_format = st.radio(
 # Adjust the prompt based on input size and format
 summary_prompt = base_prompt.format(summary_format=summary_format) + f" in {summary_size} words:"
 
-# Extract video ID and display thumbnail
-video_id = None
+# Display video thumbnail if valid
 if youtube_link:
     video_id = extract_video_id(youtube_link)
     if video_id:
@@ -182,75 +140,54 @@ if youtube_link:
 
 # Button to generate summary
 if st.button("Generate Summary"):
-    if not youtube_link:
-        st.error("Please enter a YouTube link.")
-        st.stop()
+    if video_id:
+        transcript_text = extract_transcript_details(video_id)
+        if transcript_text:
+            # Translate transcript if video language is not English
+            if video_language != "English":
+                transcript_text = translate_text(transcript_text, src_lang=video_language.lower(), dest_lang="en")
+                if not transcript_text:
+                    st.error("Failed to translate transcript.")
+                    st.stop()
 
-    if not video_id:
-        st.error("Invalid YouTube URL. Please enter a valid link.")
-        st.stop()
+            # Generate summary in English
+            summary = generate_genmini_content(transcript_text, summary_prompt)
+            if summary:
+                # Translate summary to the desired language
+                if summary_language != "English":
+                    summary = translate_text(summary, src_lang="en", dest_lang=summary_language.lower())
+                    if not summary:
+                        st.error("Failed to translate summary.")
+                        st.stop()
 
-    # Extract transcript or process audio if no transcript
-    transcript_text = extract_transcript_details(video_id)
-    if not transcript_text:
-        st.warning("Transcript not available. Attempting to download and process audio...")
-        audio_path = download_audio(youtube_link)
-        if not audio_path:
-            st.error("Failed to download audio. Please try another video.")
-            st.stop()
+                st.subheader(f"Video Summary ({summary_format}) - {summary_language}")
+                st.write(summary)
 
-        # Process audio through Whisper
-        transcript_text = process_audio_with_whisper(audio_path)
-        if not transcript_text:
-            st.error("Failed to process audio. Please try again later.")
-            st.stop()
-
-    # Translate transcript if video language is not English
-    if video_language != "English":
-        transcript_text = translate_text(transcript_text, src_lang=video_language.lower(), dest_lang="en")
-        if not transcript_text:
-            st.error("Failed to translate transcript.")
-            st.stop()
-
-    # Generate summary in English
-    summary = generate_summary(transcript_text, summary_prompt)
-    if not summary:
-        st.error("Failed to generate summary. Please try again.")
-        st.stop()
-
-    # Translate summary to the desired language
-    if summary_language != "English":
-        summary = translate_text(summary, src_lang="en", dest_lang=summary_language.lower())
-        if not summary:
-            st.error("Failed to translate summary.")
-            st.stop()
-
-    # Display summary
-    st.subheader(f"Video Summary ({summary_format}) - {summary_language}")
-    st.write(summary)
-
-    # Provide download options
-    col1, col2 = st.columns(2)
-    with col1:
-        # Download as TXT
-        txt_data = BytesIO()
-        txt_data.write(summary.encode("utf-8"))
-        txt_data.seek(0)
-        st.download_button(
-            label="Download as TXT",
-            data=txt_data,
-            file_name=f"summary_{summary_format.lower()}.txt",
-            mime="text/plain"
-        )
-    with col2:
-        # Download as PDF
-        try:
-            pdf_data = BytesIO(generate_pdf(summary))
-            st.download_button(
-                label="Download as PDF",
-                data=pdf_data,
-                file_name=f"summary_{summary_format.lower()}.pdf",
-                mime="application/pdf"
-            )
-        except Exception as e:
-            st.error(f"Error generating PDF: {e}")
+                # Provide download options
+                col1, col2 = st.columns(2)
+                with col1:
+                    # Download as TXT
+                    txt_data = BytesIO()
+                    txt_data.write(summary.encode("utf-8"))
+                    txt_data.seek(0)
+                    st.download_button(
+                        label="Download as TXT",
+                        data=txt_data,
+                        file_name=f"summary_{summary_format.lower()}.txt",
+                        mime="text/plain"
+                    )
+                with col2:
+                    # Download as PDF
+                    pdf_data = BytesIO(generate_pdf(summary))
+                    st.download_button(
+                        label="Download as PDF",
+                        data=pdf_data,
+                        file_name=f"summary_{summary_format.lower()}.pdf",
+                        mime="application/pdf"
+                    )
+            else:
+                st.error("Failed to generate summary. Please try again.")
+        else:
+            st.error("Failed to extract transcript. Ensure the video supports captions.")
+    else:
+        st.error("Invalid YouTube URL. Please enter a valid link.") 
