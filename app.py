@@ -20,17 +20,6 @@ genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 # Initialize the translator
 translator = Translator()
 
-# Language codes for translation
-LANGUAGE_CODES = {
-    "English": "en",
-    "Kannada": "kn",
-    "Hindi": "hi",
-    "Telugu": "te",
-    "Tamil": "ta",
-    "Malayalam": "ml",
-    "Other": None  # Fallback for unsupported or unknown languages
-}
-
 # Base prompt for summarization
 base_prompt = """
 You are a YouTube video summarizer. Take the transcript text and summarize 
@@ -79,7 +68,7 @@ def download_audio(youtube_url):
 # Function to process audio and generate transcript using Whisper (local model)
 def process_audio_with_whisper(audio_path):
     try:
-        model = whisper.load_model("base")  # You can change to "small", "medium", etc. for better accuracy
+        model = whisper.load_model("base")
         with st.spinner("Processing audio with Whisper..."):
             result = model.transcribe(audio_path)
             return result.get("text", "")
@@ -90,20 +79,14 @@ def process_audio_with_whisper(audio_path):
 # Function to translate text
 def translate_text(text, src_lang, dest_lang="en"):
     try:
-        if not text or not text.strip():
-            st.error("Cannot translate empty or invalid text.")
+        if not text:
+            st.error("No text provided for translation.")
             return None
 
-        # Get language codes
-        src_lang_code = LANGUAGE_CODES.get(src_lang, None)
-        dest_lang_code = LANGUAGE_CODES.get(dest_lang, "en")
+        if src_lang.lower() == "english":
+            src_lang = None  # Auto-detect source language
 
-        # Handle unsupported source language
-        if not src_lang_code:
-            st.warning(f"Unsupported source language: {src_lang}. Assuming English as the source language.")
-            src_lang_code = "en"  # Default to English for unsupported languages
-
-        translation = translator.translate(text, src=src_lang_code, dest=dest_lang_code)
+        translation = translator.translate(text, src=src_lang, dest=dest_lang)
         return translation.text
     except Exception as e:
         st.error(f"Error translating text: {e}")
@@ -218,7 +201,7 @@ if st.button("Generate Summary"):
 
     # Translate transcript if video language is not English
     if video_language != "English":
-        transcript_text = translate_text(transcript_text, src_lang=video_language, dest_lang="en")
+        transcript_text = translate_text(transcript_text, src_lang=video_language.lower(), dest_lang="en")
         if not transcript_text:
             st.error("Failed to translate transcript.")
             st.stop()
@@ -231,7 +214,7 @@ if st.button("Generate Summary"):
 
     # Translate summary to the desired language
     if summary_language != "English":
-        summary = translate_text(summary, src_lang="en", dest_lang=summary_language)
+        summary = translate_text(summary, src_lang="en", dest_lang=summary_language.lower())
         if not summary:
             st.error("Failed to translate summary.")
             st.stop()
@@ -239,3 +222,26 @@ if st.button("Generate Summary"):
     # Display summary
     st.subheader(f"Video Summary ({summary_format}) - {summary_language}")
     st.write(summary)
+
+    # Provide download options
+    col1, col2 = st.columns(2)
+    with col1:
+        # Download as TXT
+        txt_data = BytesIO()
+        txt_data.write(summary.encode("utf-8"))
+        txt_data.seek(0)
+        st.download_button(
+            label="Download as TXT",
+            data=txt_data,
+            file_name=f"summary_{summary_format.lower()}.txt",
+            mime="text/plain"
+        )
+    with col2:
+        # Download as PDF
+        pdf_data = BytesIO(generate_pdf(summary))
+        st.download_button(
+            label="Download as PDF",
+            data=pdf_data,
+            file_name=f"summary_{summary_format.lower()}.pdf",
+            mime="application/pdf"
+        )
