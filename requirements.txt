@@ -8,4 +8,4 @@ fpdf
 pytube
 whisper
 BytesIO
-pip install --upgrade streamlit
+--upgrade streamlit
