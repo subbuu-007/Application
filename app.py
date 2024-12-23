@@ -4,12 +4,14 @@ from dotenv import load_dotenv
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import CouldNotRetrieveTranscript
 import google.generativeai as genai
-from googletrans import Translator
+from googletrans import Translator, LANGUAGES
 import re
 from io import BytesIO
 from fpdf import FPDF
 from pytube import YouTube
 import whisper
+from googletrans import exceptions
+
 
 # Load environment variables
 load_dotenv()
@@ -47,8 +49,8 @@ def extract_transcript_details(video_id):
         transcript_data = YouTubeTranscriptApi.get_transcript(video_id)
         transcript = " ".join([entry["text"] for entry in transcript_data])
         return transcript
-    except CouldNotRetrieveTranscript as e:
-        st.warning(f"Could not retrieve a transcript for this video. Attempting to download audio... {str(e)}")
+    except CouldNotRetrieveTranscript:
+        st.warning("Could not retrieve a transcript for this video. Attempting to download audio...")
         return None
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}")
@@ -79,21 +81,19 @@ def process_audio_with_whisper(audio_path):
 # Function to translate text
 def translate_text(text, src_lang, dest_lang="en"):
     try:
-        if not text:
-            st.error("No text provided for translation.")
-            return None
-
-        if src_lang.lower() == "english":
-            src_lang = None  # Auto-detect source language
-
+        if src_lang.lower() == dest_lang.lower():
+            return text
         translation = translator.translate(text, src=src_lang, dest=dest_lang)
         return translation.text
-    except Exception as e:
+    except exceptions.TranslatorError as e:
         st.error(f"Error translating text: {e}")
+        return None
+    except Exception:
+        st.error("Unexpected error during translation. Please check the language selection.")
         return None
 
 # Function to generate summary using AI
-def generate_genmini_content(transcript_text, prompt):
+def generate_summary(transcript_text, prompt):
     try:
         model = genai.GenerativeModel("gemini-pro")
         response = model.generate_content(prompt + transcript_text)
@@ -108,15 +108,21 @@ def generate_pdf(summary_text):
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
-    # Add a Unicode font (use a font file that supports Unicode characters)
-    font_path = "C:/Users/subha/Pictures/font/ttf/NotoSerif-Regular.ttf"  # Replace with the path to your font file
-    pdf.add_font("DejaVu", "", font_path, uni=True)
+    # Adjust font path and ensure it's available
+    font_path = "C:/Users/subha/Pictures/font/ttf/NotoSerif-Regular.ttf"  # Update the path
+    try:
+        pdf.add_font("DejaVu", "", font_path, uni=True)
+    except Exception as e:
+        st.error(f"Error adding font: {e}")
+        pdf.set_font("Arial", size=12)  # Fallback to Arial if custom font fails
+
     pdf.set_font("DejaVu", size=12)
 
-    # Add the text
     pdf.multi_cell(0, 10, summary_text)
 
-    return pdf.output(dest="S").encode("latin1")
+    # Output PDF to a byte stream
+    pdf_output = pdf.output(dest='S').encode("latin1")
+    return pdf_output
 
 # Streamlit app
 st.markdown(
@@ -207,7 +213,7 @@ if st.button("Generate Summary"):
             st.stop()
 
     # Generate summary in English
-    summary = generate_genmini_content(transcript_text, summary_prompt)
+    summary = generate_summary(transcript_text, summary_prompt)
     if not summary:
         st.error("Failed to generate summary. Please try again.")
         st.stop()
@@ -238,10 +244,13 @@ if st.button("Generate Summary"):
         )
     with col2:
         # Download as PDF
-        pdf_data = BytesIO(generate_pdf(summary))
-        st.download_button(
-            label="Download as PDF",
-            data=pdf_data,
-            file_name=f"summary_{summary_format.lower()}.pdf",
-            mime="application/pdf"
-        )
+        try:
+            pdf_data = BytesIO(generate_pdf(summary))
+            st.download_button(
+                label="Download as PDF",
+                data=pdf_data,
+                file_name=f"summary_{summary_format.lower()}.pdf",
+                mime="application/pdf"
+            )
+        except Exception as e:
+            st.error(f"Error generating PDF: {e}")
