@@ -7,3 +7,4 @@ googletrans
 fpdf
 pytube
 whisper
+BytesIO
