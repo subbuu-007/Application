@@ -8,3 +8,4 @@ fpdf
 pytube
 whisper
 IO
+pip search io
